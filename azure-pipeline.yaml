@@ -23,12 +23,12 @@ stages:
           - task: DownloadSecureFile@1
             name: download_ssh_key
             inputs:
-              secureFile: "br_id_ed25519"
+              secureFile: "br_id_ed"
 
           - script: |
               mkdir -p ~/.ssh
-              cp $(download_ssh_key.secureFilePath) ~/.ssh/br_id_ed25519
-              chmod 600 ~/.ssh/br_id_ed25519
+              cp $(download_ssh_key.secureFilePath) ~/.ssh/br_id_ed
+              chmod 600 ~/.ssh/br_id_ed
               echo "StrictHostKeyChecking no" > ~/.ssh/config
             displayName: "Setup SSH Private Key"
 
