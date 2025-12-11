@@ -1,0 +1,72 @@
+name: Build and Push Images
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/build-and-push.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      BACKEND_REPO: ${{ secrets.ECR_BACKEND_REPO }}
+      FRONTEND_REPO: ${{ secrets.ECR_FRONTEND_REPO }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push backend
+        working-directory: backend
+        id: backend_build
+        run: |
+          TAG=${GITHUB_SHA::7}
+          IMAGE="${BACKEND_REPO}:${TAG}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          docker tag "$IMAGE" "${BACKEND_REPO}:latest"
+          docker push "${BACKEND_REPO}:latest"
+          echo "backend_image=${IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push frontend
+        working-directory: frontend
+        id: frontend_build
+        run: |
+          TAG=${GITHUB_SHA::7}
+          IMAGE="${FRONTEND_REPO}:${TAG}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          docker tag "$IMAGE" "${FRONTEND_REPO}:latest"
+          docker push "${FRONTEND_REPO}:latest"
+          echo "frontend_image=${IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload image metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-info
+          path: |
+            backend_image.txt
+            frontend_image.txt
+        # create those files
+      - name: Write artifact files
+        run: |
+          echo "${{ steps.backend_build.outputs.backend_image }}" > backend_image.txt
+          echo "${{ steps.frontend_build.outputs.frontend_image }}" > frontend_image.txt
