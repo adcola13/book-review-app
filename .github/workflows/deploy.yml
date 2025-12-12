@@ -67,6 +67,18 @@ jobs:
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --region "${AWS_REGION}" --name "${EKS_CLUSTER_NAME}"
 
+      - name: Debug AWS identity
+        run: aws sts get-caller-identity --output json
+
+      - name: Describe EKS cluster
+        run: aws eks describe-cluster --name "${{ secrets.EKS_CLUSTER_NAME }}" --region "${{ secrets.AWS_REGION }}" --query "cluster.[name,status,endpoint]" --output json
+      
+      - name: Show kubeconfig (minified)
+        run: |
+          kubectl config view --minify
+          kubectl version --client
+          kubectl cluster-info || true
+
       - name: Ensure namespace exists
         run: kubectl apply -f k8s/namespace.yaml
 
