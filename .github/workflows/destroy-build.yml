@@ -9,11 +9,10 @@ permissions:
 
 jobs:
   destroy-ecr:
-    name: Delete backend & frontend images
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Configure AWS credentials (OIDC)
@@ -22,18 +21,54 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Delete backend images
+      - name: Delete backend images (safe)
         run: |
-          echo "Deleting all images from backend repo: ${{ secrets.ECR_BACKEND_REPO }}"
-          aws ecr batch-delete-image \
-            --repository-name "${{ secrets.ECR_BACKEND_REPO }}" \
-            --image-ids $(aws ecr list-images --repository-name "${{ secrets.ECR_BACKEND_REPO }}" --query 'imageIds[*]' --output json) \
-            || echo "No backend images to delete."
+          FULL="${{ secrets.ECR_BACKEND_REPO }}"
+          echo "Backend full repo = $FULL"
 
-      - name: Delete frontend images
+          # Extract the repository name after the last "/"
+          REPO="${FULL##*/}"
+          echo "Backend repo extracted = $REPO"
+
+          # Check if repository exists
+          if ! aws ecr describe-repositories --repository-names "$REPO" >/dev/null 2>&1; then
+            echo "Repository '$REPO' not found. Skipping backend cleanup."
+            exit 0
+          fi
+
+          # List images
+          IMAGES=$(aws ecr list-images --repository-name "$REPO" --query 'imageIds' --output json)
+
+          if [ "$IMAGES" = "[]" ]; then
+            echo "No backend images found. Skipping deletion."
+            exit 0
+          fi
+
+          echo "Deleting images from backend repo '$REPO'..."
+          aws ecr batch-delete-image --repository-name "$REPO" --image-ids "$IMAGES" || echo "Failed to delete some images."
+
+      - name: Delete frontend images (safe)
         run: |
-          echo "Deleting all images from frontend repo: ${{ secrets.ECR_FRONTEND_REPO }}"
-          aws ecr batch-delete-image \
-            --repository-name "${{ secrets.ECR_FRONTEND_REPO }}" \
-            --image-ids $(aws ecr list-images --repository-name "${{ secrets.ECR_FRONTEND_REPO }}" --query 'imageIds[*]' --output json) \
-            || echo "No frontend images to delete."
+          FULL="${{ secrets.ECR_FRONTEND_REPO }}"
+          echo "Frontend full repo = $FULL"
+
+          # Extract the repository name after the last "/"
+          REPO="${FULL##*/}"
+          echo "Frontend repo extracted = $REPO"
+
+          # Check if repository exists
+          if ! aws ecr describe-repositories --repository-names "$REPO" >/dev/null 2>&1; then
+            echo "Repository '$REPO' not found. Skipping frontend cleanup."
+            exit 0
+          fi
+
+          # List images
+          IMAGES=$(aws ecr list-images --repository-name "$REPO" --query 'imageIds' --output json)
+
+          if [ "$IMAGES" = "[]" ]; then
+            echo "No frontend images found. Skipping deletion."
+            exit 0
+          fi
+
+          echo "Deleting images from frontend repo '$REPO'..."
+          aws ecr batch-delete-image --repository-name "$REPO" --image-ids "$IMAGES" || echo "Failed to delete some images."
