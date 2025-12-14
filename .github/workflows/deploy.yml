@@ -97,6 +97,26 @@ jobs:
           kubectl version --client
           kubectl cluster-info || true
 
+      - name: Fetch DB password from SSM
+        run: |
+          DB_PASS=$(aws ssm get-parameter \
+            --name "${{ secrets.DB_SSM_PATH }}" \
+            --with-decryption \
+            --query Parameter.Value \
+            --output text)
+      
+          echo "DB_PASS=$DB_PASS" >> $GITHUB_ENV
+      
+          kubectl create secret generic book-review-backend-env \
+            -n book-review \
+            --from-literal=DB_HOST="${{ secrets.DB_HOST }}" \
+            --from-literal=DB_NAME="${{ secrets.DB_NAME }}" \
+            --from-literal=DB_USER="${{ secrets.DB_USERNAME }}" \
+            --from-literal=DB_PASS="$DB_PASS" \
+            --from-literal=DB_DIALECT="mysql" \
+            --from-literal=JWT_SECRET="${{ secrets.JWT_SECRET }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Ensure namespace exists
         run: kubectl apply -f k8s/namespace.yaml
 
