@@ -129,7 +129,7 @@ jobs:
             -n book-review \
             --from-literal=DB_HOST="$DB_HOST" \
             --from-literal=DB_NAME="$DB_NAME" \
-            --from-literal=DB_USER="$DB_USERNAME" \
+            --from-literal=DB_USER="$DB_USER" \
             --from-literal=DB_PASS="$DB_PASS" \
             --from-literal=DB_DIALECT="mysql" \
             --from-literal=JWT_SECRET="${{ secrets.JWT_SECRET }}" \
