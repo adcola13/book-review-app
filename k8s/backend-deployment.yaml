@@ -15,31 +15,49 @@ spec:
     spec:
       containers:
         - name: backend
-          image: REPLACE_BACKEND_IMAGE  # will be overridden by kubectl set image
+          image: REPLACE_BACKEND_IMAGE  # overridden by kubectl set image
           imagePullPolicy: IfNotPresent
+
           ports:
             - containerPort: 3001
-             env:
+
+          env:
             - name: DB_HOST
               valueFrom:
                 secretKeyRef:
                   name: book-review-backend-env
                   key: DB_HOST
+
             - name: DB_NAME
               valueFrom:
                 secretKeyRef:
                   name: book-review-backend-env
                   key: DB_NAME
+
             - name: DB_USER
               valueFrom:
                 secretKeyRef:
                   name: book-review-backend-env
                   key: DB_USER
+
             - name: DB_PASS
               valueFrom:
                 secretKeyRef:
                   name: book-review-backend-env
                   key: DB_PASS
+
+            - name: DB_DIALECT
+              valueFrom:
+                secretKeyRef:
+                  name: book-review-backend-env
+                  key: DB_DIALECT
+
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: book-review-backend-env
+                  key: JWT_SECRET
+
           resources:
             requests:
               cpu: "250m"
@@ -47,4 +65,5 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+
       restartPolicy: Always
