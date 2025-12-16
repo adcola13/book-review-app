@@ -15,103 +15,80 @@ jobs:
     runs-on: ubuntu-latest
     env:
       AWS_REGION: ${{ secrets.AWS_REGION }}
-      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
       EKS_CLUSTER_NAME: ${{ secrets.EKS_CLUSTER_NAME }}
       EKS_NAMESPACE: ${{ secrets.EKS_NAMESPACE }}
       BACKEND_REPO: ${{ secrets.ECR_BACKEND_REPO }}
       FRONTEND_REPO: ${{ secrets.ECR_FRONTEND_REPO }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      - uses: azure/setup-kubectl@v4
+
       - name: Update kubeconfig
         run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME"
-
-      - name: Install kubectl
-        uses: azure/setup-kubectl@v4
 
       - name: Ensure namespace exists
         run: kubectl apply -f k8s/namespace.yaml
 
-      # ----------------------------------------------------
-      # ✅ STEP 4: Fetch ALB hostname dynamically
-      # ----------------------------------------------------
-      - name: Determine ALB hostname for ALLOWED_ORIGINS
-        run: |
-          echo "Waiting for Ingress ALB hostname..."
-          for i in {1..20}; do
-            ALB_HOST=$(kubectl get ingress book-review-ingress \
-              -n ${EKS_NAMESPACE} \
-              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+      - name: Apply manifests
+        run: kubectl apply -n ${EKS_NAMESPACE} -f k8s/
 
-            if [ -n "$ALB_HOST" ]; then
-              break
-            fi
-            sleep 5
+      # ----------------------------------------------------
+      # Fetch ALB hostname
+      # ----------------------------------------------------
+      - name: Fetch ALB hostname
+        id: fetch_alb
+        run: |
+          for i in {1..30}; do
+            HOST=$(kubectl get ingress book-review-ingress -n ${EKS_NAMESPACE} \
+              -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+            [ -n "$HOST" ] && break
+            sleep 10
           done
 
-          if [ -z "$ALB_HOST" ]; then
-            echo "ERROR: ALB hostname not available"
+          if [ -z "$HOST" ]; then
+            echo "ALB hostname not found"
             exit 1
           fi
 
-          ALLOWED_ORIGINS="http://localhost:3000,http://${ALB_HOST}"
-          echo "ALLOWED_ORIGINS=${ALLOWED_ORIGINS}"
-          echo "ALLOWED_ORIGINS=${ALLOWED_ORIGINS}" >> $GITHUB_ENV
+          echo "ALLOWED_ORIGINS=http://localhost:3000,http://${HOST}" >> $GITHUB_ENV
+          echo "alb_url=http://${HOST}" >> $GITHUB_OUTPUT
 
       # ----------------------------------------------------
-      # Fetch DB parameters from SSM
+      # Create backend secret ONCE (correct)
       # ----------------------------------------------------
-      - name: Fetch DB parameters from SSM
+      - name: Create backend secret
         run: |
-          DB_HOST=$(aws ssm get-parameter \
-            --name "${{ secrets.DB_HOST }}" \
-            --query Parameter.Value \
-            --output text)
-
-          DB_NAME=$(aws ssm get-parameter \
-            --name "${{ secrets.DB_NAME }}" \
-            --query Parameter.Value \
-            --output text)
-
-          DB_USER=$(aws ssm get-parameter \
-            --name "${{ secrets.DB_USERNAME }}" \
-            --query Parameter.Value \
-            --output text)
-
-          DB_PASS=$(aws ssm get-parameter \
-            --name "${{ secrets.DB_SSM_PATH }}" \
-            --with-decryption \
-            --query Parameter.Value \
-            --output text)
+          DB_HOST=$(aws ssm get-parameter --name "${{ secrets.DB_HOST }}" --query Parameter.Value --output text)
+          DB_NAME=$(aws ssm get-parameter --name "${{ secrets.DB_NAME }}" --query Parameter.Value --output text)
+          DB_USER=$(aws ssm get-parameter --name "${{ secrets.DB_USERNAME }}" --query Parameter.Value --output text)
+          DB_PASS=$(aws ssm get-parameter --name "${{ secrets.DB_SSM_PATH }}" --with-decryption --query Parameter.Value --output text)
 
           kubectl create secret generic book-review-backend-env \
             -n ${EKS_NAMESPACE} \
-            --from-literal=ALLOWED_ORIGINS="$ALLOWED_ORIGINS" \
             --from-literal=DB_HOST="$DB_HOST" \
             --from-literal=DB_NAME="$DB_NAME" \
             --from-literal=DB_USER="$DB_USER" \
             --from-literal=DB_PASS="$DB_PASS" \
             --from-literal=DB_DIALECT="mysql" \
+            --from-literal=ALLOWED_ORIGINS="$ALLOWED_ORIGINS" \
             --from-literal=JWT_SECRET="${{ secrets.JWT_SECRET }}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Apply manifests
-        run: kubectl apply -n ${EKS_NAMESPACE} -f k8s/
-
-      - name: Update backend image
+      - name: Update images
         run: |
-          kubectl -n ${EKS_NAMESPACE} set image deployment/book-review-backend \
-            backend=${{ steps.backend_image.outputs.image }}
+          kubectl -n ${EKS_NAMESPACE} set image deployment/book-review-backend backend=${BACKEND_REPO}:latest
+          kubectl -n ${EKS_NAMESPACE} set image deployment/book-review-frontend frontend=${FRONTEND_REPO}:latest
 
-      - name: Update frontend image
-        run: |
-          kubectl -n ${EKS_NAMESPACE} set image deployment/book-review-frontend \
-            frontend=${{ steps.frontend_image.outputs.image }}
+      - name: Restart backend
+        run: kubectl rollout restart deployment/book-review-backend -n ${EKS_NAMESPACE}
+
+      - name: Output ALB URL
+        run: echo "Application URL: ${{ steps.fetch_alb.outputs.alb_url }}"
