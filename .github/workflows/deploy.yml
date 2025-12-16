@@ -13,6 +13,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+
     env:
       AWS_REGION: ${{ secrets.AWS_REGION }}
       AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
@@ -39,8 +40,6 @@ jobs:
 
       - name: Ensure namespace exists
         run: kubectl apply -f k8s/namespace.yaml
-
-
 
       # ----------------------------------------------------
       # Fetch DB parameters from SSM
@@ -104,7 +103,6 @@ jobs:
           fi
 
           ALLOWED_ORIGINS="http://localhost:3000,http://${ALB_HOST}"
-          echo "ALLOWED_ORIGINS=${ALLOWED_ORIGINS}"
           echo "ALLOWED_ORIGINS=${ALLOWED_ORIGINS}" >> $GITHUB_ENV
 
           kubectl create secret generic book-review-backend-env \
@@ -121,7 +119,7 @@ jobs:
         run: |
           kubectl -n ${EKS_NAMESPACE} set image deployment/book-review-frontend \
             frontend=${{ steps.frontend_image.outputs.image }}
-      
+
       - name: Restart backend pods
         run: |
           kubectl -n ${EKS_NAMESPACE} rollout restart deployment/book-review-backend
