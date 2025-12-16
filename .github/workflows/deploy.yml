@@ -2,9 +2,9 @@ name: Deploy to EKS
 
 on:
   workflow_dispatch:
-# workflow_run:
-#   workflows: ["Build and Push Images"]
-#   types: [completed]
+  workflow_run:
+   workflows: ["Build and Push Images"]
+   types: [completed]
 
 permissions:
   id-token: write
