@@ -58,6 +58,9 @@ spec:
                   name: book-review-backend-env
                   key: JWT_SECRET
 
+            - name: ALLOWED_ORIGINS
+              value: "$(ALLOWED_ORIGINS)"
+
           resources:
             requests:
               cpu: "250m"
